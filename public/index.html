@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SyncLogic Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://unpkg.com/@shopify/app-bridge@latest"></script>
+    <script src="https://unpkg.com/@shopify/app-bridge-utils"></script>
+    <link rel="stylesheet" href="/static/navigation.css">
+    <link rel="stylesheet" href="/static/master.css">
+    <script src="/static/navigation.js"></script>
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <div id="navigation"></div>
+
+    <!-- Content Sections -->
+    <div id="home" class="content-section">
+        <h1>Home</h1>
+        <p>Welcome to the SyncLogic Dashboard home page. Here you can manage your store's products, bundles, and sync status.</p>
+        <div class="summary">
+            <div class="summary-item">
+                <h3>Last Sync Time</h3>
+                <p id="last-sync-time">Not Available</p>
+            </div>
+            <div class="summary-item">
+                <h3>Sync Status</h3>
+                <p id="sync-status">Not Available</p>
+            </div>
+            <div class="summary-item">
+                <h3>Total Synced Products</h3>
+                <p id="total-products">0</p>
+            </div>
+        </div>
+        <div class="summary">
+            <div class="summary-item">
+                <h3>Total Bundles</h3>
+                <p id="total-bundles">0</p>
+            </div>
+            <div class="summary-item">
+                <h3>Next Scheduled Sync</h3>
+                <p id="next-sync">Not Scheduled</p>
+            </div>
+        </div>
+        <button class="sync-button" onclick="triggerManualSync()">Manual Sync</button>
+    </div>
+
+    <div id="products" class="content-section" style="display: none;">
+        <h1>Products</h1>
+        <p>Manage your store's products. Choose a product to be the "Sync Master" and link products it will control for stock synchronization. Products linked will be locked from additional syncs.</p>
+
+        <!-- Search Bar -->
+        <input type="text" id="product-search" placeholder="Search products..." onkeyup="filterProducts()">
+
+        <!-- Products Table -->
+        <table id="products-table">
+            <thead>
+                <tr>
+                    <th onclick="sortTable(0)">Product Name</th>
+                    <th onclick="sortTable(1)">SKU</th>
+                    <th onclick="sortTable(2)">Inventory</th>
+                    <th onclick="sortTable(3)">Product Type</th>
+                    <th onclick="sortTable(4)">Vendor</th>
+                    <th>Stock Master</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="products-table-body">
+                <!-- Product rows will be inserted here dynamically -->
+            </tbody>
+        </table>
+    </div>
+
+    <div id="bundles" class="content-section" style="display: none;">
+        <h1>Bundles</h1>
+        <p>Manage your product bundles here. You can create new bundles or modify existing ones to group products together for better stock synchronization and sales.</p>
+        <!-- Add bundle management content here -->
+        <p>Bundle Management Content Coming Soon...</p>
+    </div>
+
+    <script>
+        // Shopify App Bridge Setup
+        document.addEventListener("DOMContentLoaded", function() {
+            const AppBridge = window['app-bridge'];
+            const createApp = AppBridge.default;
+            const actions = AppBridge.actions;
+
+            const app = createApp({
+                apiKey: "YOUR_SHOPIFY_API_KEY",
+                shopOrigin: new URLSearchParams(location.search).get("shop"),
+                forceRedirect: true,
+            });
+
+            const { Redirect, NavigationMenu } = actions;
+
+            // Set up App Bridge Navigation Menu
+            NavigationMenu.create(app, {
+                items: [
+                    {
+                        label: 'Home',
+                        destination: '/home',
+                    },
+                    {
+                        label: 'Products',
+                        destination: '/products',
+                    },
+                    {
+                        label: 'Bundles',
+                        destination: '/bundles',
+                    },
+                ],
+            });
+
+            // Fetch products data
+            fetchProducts();
+        });
+
+        // Function to fetch all active products that are inventory tracked
+        async function fetchProducts() {
+            try {
+                // Replace with actual API call to get products data
+                const response = await fetch('/api/products');
+                const products = await response.json();
+                populateProductsTable(products);
+            } catch (error) {
+                console.error('Error fetching products:', error);
+            }
+        }
+
+        // Function to populate the products table
+        function populateProductsTable(products) {
+            const tableBody = document.getElementById('products-table-body');
+            tableBody.innerHTML = '';
+
+            products.forEach(product => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${product.name}</td>
+                    <td>${product.sku}</td>
+                    <td>${product.inventory}</td>
+                    <td>${product.type}</td>
+                    <td>${product.vendor}</td>
+                    <td>${product.isSyncMaster ? 'Yes' : 'No'}</td>
+                    <td class="action-buttons">
+                        <button class="sync-master-btn" onclick="setSyncMaster('${product.id}')">Set as Sync Master</button>
+                        <button class="link-products-btn" onclick="linkProducts('${product.id}')">Link Products</button>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+
+        // Function to filter products in the search bar
+        function filterProducts() {
+            const searchInput = document.getElementById('product-search').value.toUpperCase();
+            const table = document.getElementById('products-table');
+            const tr = table.getElementsByTagName('tr');
+
+            for (let i = 1; i < tr.length; i++) { // Start from 1 to skip the header row
+                const td = tr[i].getElementsByTagName('td')[0];
+                if (td) {
+                    const txtValue = td.textContent || td.innerText;
+                    tr[i].style.display = txtValue.toUpperCase().indexOf(searchInput) > -1 ? '' : 'none';
+                }       
+            }
+        }
+
+        // Function to sort the table by column
+        function sortTable(columnIndex) {
+            const table = document.getElementById('products-table');
+            let switching = true;
+            let direction = 'asc';
+            let switchcount = 0;
+
+            while (switching) {
+                switching = false;
+                const rows = table.rows;
+                for (let i = 1; i < (rows.length - 1); i++) {
+                    let shouldSwitch = false;
+                    const x = rows[i].getElementsByTagName('td')[columnIndex];
+                    const y = rows[i + 1].getElementsByTagName('td')[columnIndex];
+
+                    if (direction === 'asc') {
+                        if (x.innerHTML.toLowerCase() > y.innerHTML.toLowerCase()) {
+                            shouldSwitch = true;
+                            break;
+                        }
+                    } else if (direction === 'desc') {
+                        if (x.innerHTML.toLowerCase() < y.innerHTML.toLowerCase()) {
+                            shouldSwitch = true;
+                            break;
+                        }
+                    }
+                }
+                if (shouldSwitch) {
+                    rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
+                    switching = true;
+                    switchcount++;
+                } else {
+                    if (switchcount === 0 && direction === 'asc') {
+                        direction = 'desc';
+                        switching = true;
+                    }
+                }
+            }
+        }
+
+        // Placeholder JavaScript Function for Manual Sync Button
+        function triggerManualSync() {
+            alert('Manual sync triggered!');
+            // Add logic to trigger the manual sync with your backend
+        }
+
+        // Example data population (replace with actual backend data retrieval)
+        document.getElementById('last-sync-time').textContent = '2024-10-28 15:30';
+        document.getElementById('sync-status').textContent = 'Idle';
+        document.getElementById('total-products').textContent = '250';
+        document.getElementById('total-bundles').textContent = '35';
+        document.getElementById('next-sync').textContent = '2024-10-29 02:00';
+    </script>
+</body>
+</html>
