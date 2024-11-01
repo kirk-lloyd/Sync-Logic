@@ -133,8 +133,6 @@ app.get('/auth/callback', async (req, res) => {
     return res.status(400).send('Required parameters missing');
   }
 
-  // Verify the HMAC (this part is skipped for simplicity)
-
   const accessTokenRequestUrl = `https://${shop}/admin/oauth/access_token`;
   const accessTokenPayload = {
     client_id: SHOPIFY_API_KEY,
@@ -147,57 +145,17 @@ app.get('/auth/callback', async (req, res) => {
     const accessToken = response.data.access_token;
 
     // Save shop and access token in MongoDB
-    const store = await Store.findOneAndUpdate(
+    await Store.findOneAndUpdate(
       { shop_domain: shop },
       { shop_domain: shop, access_token: accessToken },
       { upsert: true, new: true }
     );
 
-    res.status(200).send('Shop successfully authenticated');
+    // After successful authentication, redirect to the client's embedded Shopify page
+    res.redirect(`https://${shop}/admin/apps/${process.env.SHOPIFY_APP_HANDLE}`);
   } catch (error) {
     console.error('Error during OAuth callback:', error);
     res.status(500).send('Error during authentication');
-  }
-});
-
-// Product Update Webhook Endpoint
-app.post('/webhooks/products/update', verifyWebhook, async (req, res) => {
-  try {
-    const productData = req.body;
-    const storeDomain = req.headers['x-shopify-shop-domain'];
-
-    // Fetch the store information from the database
-    const store = await Store.findOne({ shop_domain: storeDomain });
-
-    if (!store) {
-      console.error(`Store not found for domain: ${storeDomain}`);
-      return res.status(404).send('Store not found');
-    }
-
-    // Update product in the database
-    const existingProduct = await Product.findOne({ product_id: productData.id, store_id: store._id });
-    if (existingProduct) {
-      // Update existing product details
-      existingProduct.title = productData.title;
-      existingProduct.inventory_quantity = productData.variants[0].inventory_quantity;
-      await existingProduct.save();
-    } else {
-      // Create a new product entry if it doesn't exist
-      await Product.create({
-        product_id: productData.id,
-        store_id: store._id,
-        title: productData.title,
-        sku: productData.variants[0].sku,
-        inventory_quantity: productData.variants[0].inventory_quantity,
-        product_type: productData.product_type,
-        vendor: productData.vendor,
-      });
-    }
-
-    res.status(200).send('Product updated successfully');
-  } catch (error) {
-    console.error('Error handling product update webhook:', error);
-    res.status(500).send('Internal Server Error');
   }
 });
 
@@ -206,6 +164,10 @@ app.get('/api/products', async (req, res) => {
   const shopDomain = req.headers['shop-domain'];
 
   try {
+    if (!shopDomain) {
+      return res.status(400).send('Missing shop-domain header');
+    }
+
     const store = await Store.findOne({ shop_domain: shopDomain });
     if (!store) {
       return res.status(404).send('Store not found');
@@ -221,47 +183,9 @@ app.get('/api/products', async (req, res) => {
       },
     });
 
-    const products = response.data.products;
-
-    // Format product data for the frontend
-    const formattedProducts = products.map(product => ({
-      id: product.id,
-      name: product.title,
-      sku: product.variants[0].sku,
-      inventory: product.variants[0].inventory_quantity,
-      type: product.product_type,
-      vendor: product.vendor,
-      isSyncMaster: false // Default value, modify based on your logic
-    }));
-
-    res.json(formattedProducts);
+    res.json(response.data.products);
   } catch (error) {
     console.error('Error fetching products from Shopify:', error);
-    res.status(500).send('Internal Server Error');
-  }
-});
-
-// Endpoint to set a product as sync master
-app.post('/api/set-sync-master', async (req, res) => {
-  const { productId, linkedProductIds, storeId } = req.body;
-
-  try {
-    // Find product and mark it as sync master
-    await Product.updateOne(
-      { _id: productId, store_id: storeId },
-      { is_sync_master: true }
-    );
-
-    // Link other products
-    await Bundle.create({
-      store_id: storeId,
-      master_product_id: productId,
-      linked_product_ids: linkedProductIds,
-    });
-
-    res.status(200).json({ message: 'Sync master set successfully' });
-  } catch (error) {
-    console.error('Error setting sync master:', error);
     res.status(500).send('Internal Server Error');
   }
 });

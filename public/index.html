@@ -48,7 +48,7 @@
 
     <div id="products" class="content-section" style="display: none;">
         <h1>Products</h1>
-        <p>Manage your store's products. Choose a product to be the "Sync Master" and link products it will control for stock synchronization. Products linked will be locked from additional syncs.</p>
+        <p>Manage your store's products. Choose a product to be the "Sync Master" and link products it will control for stock synchronization.</p>
 
         <!-- Search Bar -->
         <input type="text" id="product-search" placeholder="Search products..." onkeyup="filterProducts()">
@@ -70,13 +70,6 @@
                 <!-- Product rows will be inserted here dynamically -->
             </tbody>
         </table>
-    </div>
-
-    <div id="bundles" class="content-section" style="display: none;">
-        <h1>Bundles</h1>
-        <p>Manage your product bundles here. You can create new bundles or modify existing ones to group products together for better stock synchronization and sales.</p>
-        <!-- Add bundle management content here -->
-        <p>Bundle Management Content Coming Soon...</p>
     </div>
 
     <script>
@@ -119,8 +112,18 @@
         // Function to fetch all active products that are inventory tracked
         async function fetchProducts() {
             try {
-                // Replace with actual API call to get products data
-                const response = await fetch('/api/products');
+                const shopDomain = new URLSearchParams(location.search).get("shop");
+
+                const response = await fetch('/api/products', {
+                    headers: {
+                        'shop-domain': shopDomain
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+
                 const products = await response.json();
                 populateProductsTable(products);
             } catch (error) {
@@ -162,7 +165,7 @@
                 if (td) {
                     const txtValue = td.textContent || td.innerText;
                     tr[i].style.display = txtValue.toUpperCase().indexOf(searchInput) > -1 ? '' : 'none';
-                }       
+                }
             }
         }
 
@@ -211,13 +214,6 @@
             alert('Manual sync triggered!');
             // Add logic to trigger the manual sync with your backend
         }
-
-        // Example data population (replace with actual backend data retrieval)
-        document.getElementById('last-sync-time').textContent = '2024-10-28 15:30';
-        document.getElementById('sync-status').textContent = 'Idle';
-        document.getElementById('total-products').textContent = '250';
-        document.getElementById('total-bundles').textContent = '35';
-        document.getElementById('next-sync').textContent = '2024-10-29 02:00';
     </script>
 </body>
 </html>
