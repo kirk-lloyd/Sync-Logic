@@ -10,6 +10,25 @@
     <link rel="stylesheet" href="/static/navigation.css">
     <link rel="stylesheet" href="/static/master.css">
     <script src="/static/navigation.js"></script>
+    <style>
+        th {
+            cursor: pointer;
+        }
+        th .sort-arrow {
+            margin-right: 8px;
+        }
+        th.active .sort-arrow.asc {
+            content: '\25B2'; /* Solid up arrow */
+            font-weight: bold;
+        }
+        th.active .sort-arrow.desc {
+            content: '\25BC'; /* Solid down arrow */
+            font-weight: bold;
+        }
+        th .sort-arrow {
+            content: '\25B3'; /* Outline up arrow */
+        }
+    </style>
 </head>
 <body>
     <!-- Navigation Bar -->
@@ -57,12 +76,12 @@
         <table id="products-table">
             <thead>
                 <tr>
-                    <th onclick="sortTable(0)">Product Name</th>
-                    <th onclick="sortTable(1)">SKU</th>
-                    <th onclick="sortTable(2)">Inventory</th>
-                    <th onclick="sortTable(3)">Product Type</th>
-                    <th onclick="sortTable(4)">Vendor</th>
-                    <th>Stock Master</th>
+                    <th onclick="sortTable(0)"><span class="sort-arrow"></span> Product Name</th>
+                    <th onclick="sortTable(1)"><span class="sort-arrow"></span> SKU</th>
+                    <th onclick="sortTable(2)"><span class="sort-arrow"></span> Inventory</th>
+                    <th onclick="sortTable(3)"><span class="sort-arrow"></span> Product Type</th>
+                    <th onclick="sortTable(4)"><span class="sort-arrow"></span> Vendor</th>
+                    <th onclick="sortTable(5)"><span class="sort-arrow"></span> Stock Master</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -80,7 +99,7 @@
             const actions = AppBridge.actions;
 
             const app = createApp({
-                apiKey: "YOUR_SHOPIFY_API_KEY",
+                apiKey: "SHOPIFY_API_KEY",
                 shopOrigin: new URLSearchParams(location.search).get("shop"),
                 forceRedirect: true,
             });
@@ -90,18 +109,9 @@
             // Set up App Bridge Navigation Menu
             NavigationMenu.create(app, {
                 items: [
-                    {
-                        label: 'Home',
-                        destination: '/home',
-                    },
-                    {
-                        label: 'Products',
-                        destination: '/products',
-                    },
-                    {
-                        label: 'Bundles',
-                        destination: '/bundles',
-                    },
+                    { label: 'Home', destination: '/?shop=' + app.shopOrigin },
+                    { label: 'Products', destination: '/products?shop=' + app.shopOrigin },
+                    { label: 'Bundles', destination: '/bundles?shop=' + app.shopOrigin },
                 ],
             });
 
@@ -109,20 +119,14 @@
             fetchProducts();
         });
 
-        // Function to fetch all active products that are inventory tracked
         async function fetchProducts() {
             try {
                 const shopDomain = new URLSearchParams(location.search).get("shop");
-
-                const response = await fetch('/api/products', {
-                    headers: {
-                        'shop-domain': shopDomain
-                    }
+                const response = await fetch('/api/products?shop=' + shopDomain, {
+                    headers: { 'shop-domain': shopDomain }
                 });
 
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
+                if (!response.ok) throw new Error('Network response was not ok');
 
                 const products = await response.json();
                 populateProductsTable(products);
@@ -131,7 +135,6 @@
             }
         }
 
-        // Function to populate the products table
         function populateProductsTable(products) {
             const tableBody = document.getElementById('products-table-body');
             tableBody.innerHTML = '';
@@ -140,7 +143,7 @@
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>${product.name}</td>
-                    <td>${product.sku}</td>
+                    <td>${product.sku ? product.sku : '-'}</td>
                     <td>${product.inventory}</td>
                     <td>${product.type}</td>
                     <td>${product.vendor}</td>
@@ -154,7 +157,6 @@
             });
         }
 
-        // Function to filter products in the search bar
         function filterProducts() {
             const searchInput = document.getElementById('product-search').value.toUpperCase();
             const table = document.getElementById('products-table');
@@ -169,51 +171,75 @@
             }
         }
 
-        // Function to sort the table by column
-        function sortTable(columnIndex) {
-            const table = document.getElementById('products-table');
-            let switching = true;
-            let direction = 'asc';
-            let switchcount = 0;
+function sortTable(columnIndex) {
+    const table = document.getElementById('products-table');
+    let switching = true;
+    let direction = 'asc';
+    let switchcount = 0;
+    let shouldSwitch;
+    let i; // Declare `i` outside the `while` loop so it can be accessed when swapping rows
 
-            while (switching) {
-                switching = false;
-                const rows = table.rows;
-                for (let i = 1; i < (rows.length - 1); i++) {
-                    let shouldSwitch = false;
-                    const x = rows[i].getElementsByTagName('td')[columnIndex];
-                    const y = rows[i + 1].getElementsByTagName('td')[columnIndex];
+    while (switching) {
+        switching = false;
+        const rows = table.rows;
 
-                    if (direction === 'asc') {
-                        if (x.innerHTML.toLowerCase() > y.innerHTML.toLowerCase()) {
-                            shouldSwitch = true;
-                            break;
-                        }
-                    } else if (direction === 'desc') {
-                        if (x.innerHTML.toLowerCase() < y.innerHTML.toLowerCase()) {
-                            shouldSwitch = true;
-                            break;
-                        }
-                    }
-                }
-                if (shouldSwitch) {
-                    rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
-                    switching = true;
-                    switchcount++;
-                } else {
-                    if (switchcount === 0 && direction === 'asc') {
-                        direction = 'desc';
-                        switching = true;
-                    }
-                }
+        for (i = 1; i < (rows.length - 1); i++) { // Initialize `i` here
+            shouldSwitch = false;
+            const x = rows[i].getElementsByTagName('td')[columnIndex];
+            const y = rows[i + 1].getElementsByTagName('td')[columnIndex];
+
+            if (direction === 'asc' && x.innerHTML.toLowerCase() > y.innerHTML.toLowerCase()) {
+                shouldSwitch = true;
+                break;
+            } else if (direction === 'desc' && x.innerHTML.toLowerCase() < y.innerHTML.toLowerCase()) {
+                shouldSwitch = true;
+                break;
             }
         }
 
-        // Placeholder JavaScript Function for Manual Sync Button
+        if (shouldSwitch) {
+            rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
+            switching = true;
+            switchcount++;
+        } else if (switchcount === 0 && direction === 'asc') {
+            direction = 'desc';
+            switching = true;
+        }
+    }
+
+    updateSortArrows(columnIndex, direction);
+}
+
+function updateSortArrows(columnIndex, direction) {
+    const headers = document.querySelectorAll('#products-table th');
+    headers.forEach((header, index) => {
+        const sortArrow = header.querySelector('.sort-arrow');
+        if (sortArrow) { // Check if sortArrow exists
+            if (index === columnIndex) {
+                header.classList.add('active');
+                sortArrow.textContent = direction === 'asc' ? '▲' : '▼';
+            } else {
+                header.classList.remove('active');
+                sortArrow.textContent = '△';
+            }
+        }
+    });
+}
+
+
         function triggerManualSync() {
             alert('Manual sync triggered!');
-            // Add logic to trigger the manual sync with your backend
+        }
+
+        function setSyncMaster(productId) {
+            alert(`Set product ${productId} as sync master`);
+        }
+
+        function linkProducts(productId) {
+            alert(`Link products for product ${productId}`);
         }
     </script>
 </body>
 </html>
+
+
