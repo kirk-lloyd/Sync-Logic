@@ -1,43 +1,35 @@
-# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
-
 client_id = "7b468ac19684e5b95cebc5e1e3ae76f2"
 name = "SyncLogic"
 handle = "stocksynclogic"
-application_url = "https://stock-sync-logic.projektagency.com.au"
+application_url = "https://stocksynclogic.projektagency.com.au"
 embedded = true
 
 [build]
 automatically_update_urls_on_dev = true
-dev_store_url = "bont-test.myshopify.com"
+dev_store_url = "projekt-agency-apps.myshopify.com"
 include_config_on_deploy = true
 
 [access_scopes]
-# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_inventory,read_locations,read_orders,read_products,write_inventory,write_products"
+scopes = "read_inventory,write_inventory,read_products,write_products"
 
 [auth]
 redirect_urls = [
-  "https://stock-sync-logic.projektagency.com.au/auth/callback"
+  "https://stocksynclogic.projektagency.com.au/api/auth",
+  "https://stocksynclogic.projektagency.com.au/auth/callback",
+  "https://stocksynclogic.projektagency.com.au/auth/shopify/callback",
+  "https://stocksynclogic.projektagency.com.au/api/auth/callback"
 ]
 
 [webhooks]
 api_version = "2024-10"
 
-  [[webhooks.subscriptions]]
-  compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
-  uri = "https://stock-sync-logic.projektagency.com.au/webhooks/compliance_webhooks"
+[[webhooks.subscriptions]]
+topics = [ "app/uninstalled" ]
+uri = "https://stocksynclogic.projektagency.com.au/webhooks/app_uninstalled"
 
-  [[webhooks.subscriptions]]
-  topics = [ "app/uninstalled" ]
-  uri = "https://stock-sync-logic.projektagency.com.au/webhooks/app_uninstalled"
-
-  [[webhooks.subscriptions]]
-  topics = [ "inventory_levels/update" ]
-  uri = "https://stock-sync-logic.projektagency.com.au/webhooks/inventory_levels_update"
-
-  [[webhooks.subscriptions]]
-  topics = [ "orders/fulfilled" ]
-  uri = "https://stock-sync-logic.projektagency.com.au/webhooks/orders_fulfilled"
+[[webhooks.subscriptions]]
+topics = [ "inventory_levels/update" ]
+uri = "https://stocksynclogic.projektagency.com.au/webhooks/inventory_levels_update"
 
 [pos]
 embedded = false

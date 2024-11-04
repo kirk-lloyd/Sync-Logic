@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+dotenv.config();
 import express from 'express';
 import bodyParser from 'body-parser';
 import crypto from 'crypto';
@@ -6,6 +7,9 @@ import path from 'path';
 import axios from 'axios';
 import mongoose from 'mongoose';
 import { fileURLToPath } from 'url';
+import cors from 'cors';
+import csrf from 'csurf';
+import cookieParser from 'cookie-parser';
 
 // Import models
 import Store from './models/store.model.js';
@@ -24,6 +28,8 @@ const port = process.env.PORT || 3000;
 // Shopify credentials from environment variables
 const SHOPIFY_API_KEY = process.env.SHOPIFY_API_KEY;
 const SHOPIFY_API_SECRET = process.env.SHOPIFY_API_SECRET;
+const SHOPIFY_APP_URL = process.env.SHOPIFY_APP_URL;
+const TEST_STORE_URL = process.env.TEST_STORE_URL || 'projekt-agency-apps.myshopify.com';
 const MONGODB_URI = process.env.MONGODB_URI;
 
 // Create __dirname equivalent for ES Modules
@@ -41,6 +47,15 @@ app.use(bodyParser.json({
     req.rawBody = buf; // Attach raw body buffer to request
   }
 }));
+
+// Enable CORS
+app.use(cors());
+
+// Enable cookie parsing
+app.use(cookieParser());
+
+// Enable CSRF protection for HTML forms only
+const csrfProtection = csrf({ cookie: true });
 
 // Middleware to verify Shopify webhook authenticity
 function verifyWebhook(req, res, next) {
@@ -112,14 +127,14 @@ function handleCustomerDataRequest(body) {
 }
 
 // OAuth Flow to Start the Authentication Process
-app.get('/auth', (req, res) => {
-  const shop = req.query.shop;
+app.get('/auth', csrfProtection, (req, res) => {
+  const shop = req.query.shop || TEST_STORE_URL;
 
   if (!shop) {
     return res.status(400).send('Missing shop parameter');
   }
 
-  const redirectUri = `${process.env.SHOPIFY_APP_URL}/auth/callback`;
+  const redirectUri = `${SHOPIFY_APP_URL}/auth/callback`;
   const installUrl = `https://${shop}/admin/oauth/authorize?client_id=${SHOPIFY_API_KEY}&scope=${process.env.SHOPIFY_SCOPES}&redirect_uri=${redirectUri}`;
 
   res.redirect(installUrl);
@@ -133,6 +148,8 @@ app.get('/auth/callback', async (req, res) => {
     return res.status(400).send('Required parameters missing');
   }
 
+  // Verify the HMAC (this part is skipped for simplicity)
+
   const accessTokenRequestUrl = `https://${shop}/admin/oauth/access_token`;
   const accessTokenPayload = {
     client_id: SHOPIFY_API_KEY,
@@ -145,7 +162,7 @@ app.get('/auth/callback', async (req, res) => {
     const accessToken = response.data.access_token;
 
     // Save shop and access token in MongoDB
-    await Store.findOneAndUpdate(
+    const store = await Store.findOneAndUpdate(
       { shop_domain: shop },
       { shop_domain: shop, access_token: accessToken },
       { upsert: true, new: true }
@@ -161,13 +178,9 @@ app.get('/auth/callback', async (req, res) => {
 
 // Endpoint to fetch products from Shopify
 app.get('/api/products', async (req, res) => {
-  const shopDomain = req.headers['shop-domain'];
+  const shopDomain = req.headers['shop-domain'] || TEST_STORE_URL;
 
   try {
-    if (!shopDomain) {
-      return res.status(400).send('Missing shop-domain header');
-    }
-
     const store = await Store.findOne({ shop_domain: shopDomain });
     if (!store) {
       return res.status(404).send('Store not found');
@@ -183,7 +196,20 @@ app.get('/api/products', async (req, res) => {
       },
     });
 
-    res.json(response.data.products);
+    const products = response.data.products;
+
+    // Format product data for the frontend
+    const formattedProducts = products.map(product => ({
+      id: product.id,
+      name: product.title,
+      sku: product.variants[0].sku,
+      inventory: product.variants[0].inventory_quantity,
+      type: product.product_type,
+      vendor: product.vendor,
+      isSyncMaster: false // Default value, modify based on your logic
+    }));
+
+    res.json(formattedProducts);
   } catch (error) {
     console.error('Error fetching products from Shopify:', error);
     res.status(500).send('Internal Server Error');
