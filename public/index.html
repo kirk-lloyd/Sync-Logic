@@ -3,41 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SyncLogic Dashboard</title>
+    <title>Stock Sync Logic Dashboard</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <script src="https://unpkg.com/@shopify/app-bridge@latest"></script>
-    <script src="https://unpkg.com/@shopify/app-bridge-utils"></script>
     <link rel="stylesheet" href="/static/navigation.css">
     <link rel="stylesheet" href="/static/master.css">
     <script src="/static/navigation.js"></script>
-    <style>
-        th {
-            cursor: pointer;
-        }
-        th .sort-arrow {
-            margin-right: 8px;
-        }
-        th.active .sort-arrow.asc {
-            content: '\25B2'; /* Solid up arrow */
-            font-weight: bold;
-        }
-        th.active .sort-arrow.desc {
-            content: '\25BC'; /* Solid down arrow */
-            font-weight: bold;
-        }
-        th .sort-arrow {
-            content: '\25B3'; /* Outline up arrow */
-        }
-    </style>
 </head>
 <body>
     <!-- Navigation Bar -->
     <div id="navigation"></div>
 
-    <!-- Content Sections -->
+    <!-- Home Section -->
     <div id="home" class="content-section">
         <h1>Home</h1>
-        <p>Welcome to the SyncLogic Dashboard home page. Here you can manage your store's products, bundles, and sync status.</p>
+        <p>Welcome to the Stock Sync Logic Dashboard home page. Here you can manage your store's products, bundles, and sync status.</p>
+        
+        <!-- Summary Grid -->
         <div class="summary">
             <div class="summary-item">
                 <h3>Last Sync Time</h3>
@@ -52,6 +34,7 @@
                 <p id="total-products">0</p>
             </div>
         </div>
+        
         <div class="summary">
             <div class="summary-item">
                 <h3>Total Bundles</h3>
@@ -62,31 +45,33 @@
                 <p id="next-sync">Not Scheduled</p>
             </div>
         </div>
+        
         <button class="sync-button" onclick="triggerManualSync()">Manual Sync</button>
     </div>
 
+    <!-- Products Section -->
     <div id="products" class="content-section" style="display: none;">
         <h1>Products</h1>
         <p>Manage your store's products. Choose a product to be the "Sync Master" and link products it will control for stock synchronization.</p>
 
         <!-- Search Bar -->
         <input type="text" id="product-search" placeholder="Search products..." onkeyup="filterProducts()">
-
+        
         <!-- Products Table -->
         <table id="products-table">
             <thead>
                 <tr>
-                    <th onclick="sortTable(0)"><span class="sort-arrow"></span> Product Name</th>
-                    <th onclick="sortTable(1)"><span class="sort-arrow"></span> SKU</th>
-                    <th onclick="sortTable(2)"><span class="sort-arrow"></span> Inventory</th>
-                    <th onclick="sortTable(3)"><span class="sort-arrow"></span> Product Type</th>
-                    <th onclick="sortTable(4)"><span class="sort-arrow"></span> Vendor</th>
-                    <th onclick="sortTable(5)"><span class="sort-arrow"></span> Stock Master</th>
+                    <th onclick="sortTable(0)">Product Name</th>
+                    <th onclick="sortTable(1)">SKU</th>
+                    <th onclick="sortTable(2)">Inventory</th>
+                    <th onclick="sortTable(3)">Product Type</th>
+                    <th onclick="sortTable(4)">Vendor</th>
+                    <th>Stock Master</th>
                     <th>Actions</th>
                 </tr>
             </thead>
             <tbody id="products-table-body">
-                <!-- Product rows will be inserted here dynamically -->
+                <!-- Product rows will be dynamically inserted here -->
             </tbody>
         </table>
     </div>
@@ -104,7 +89,7 @@
                 forceRedirect: true,
             });
 
-            const { Redirect, NavigationMenu } = actions;
+            const { NavigationMenu } = actions;
 
             // Set up App Bridge Navigation Menu
             NavigationMenu.create(app, {
@@ -147,14 +132,43 @@
                     <td>${product.inventory}</td>
                     <td>${product.type}</td>
                     <td>${product.vendor}</td>
-                    <td>${product.isSyncMaster ? 'Yes' : 'No'}</td>
+                    <td>
+                        <input type="checkbox" class="stock-master-checkbox" data-product-id="${product.id}" ${product.isSyncMaster ? 'checked' : ''}>
+                    </td>
                     <td class="action-buttons">
-                        <button class="sync-master-btn" onclick="setSyncMaster('${product.id}')">Set as Sync Master</button>
                         <button class="link-products-btn" onclick="linkProducts('${product.id}')">Link Products</button>
                     </td>
                 `;
                 tableBody.appendChild(row);
             });
+
+            // Event listener for "Stock Master" checkbox changes
+            document.querySelectorAll('.stock-master-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('change', function() {
+                    const productId = this.dataset.productId;
+                    const isSyncMaster = this.checked;
+                    updateProductMetafield(productId, isSyncMaster);
+                });
+            });
+        }
+
+        async function updateProductMetafield(productId, isSyncMaster) {
+            try {
+                const shopDomain = new URLSearchParams(location.search).get("shop");
+                const response = await fetch(`/api/products/${productId}/metafields`, {
+                    method: 'PUT',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'shop-domain': shopDomain 
+                    },
+                    body: JSON.stringify({ isSyncMaster })
+                });
+
+                if (!response.ok) throw new Error('Failed to update metafield');
+                console.log(`Successfully updated metafield for product ${productId}`);
+            } catch (error) {
+                console.error(`Error updating metafield for product ${productId}:`, error);
+            }
         }
 
         function filterProducts() {
@@ -162,7 +176,7 @@
             const table = document.getElementById('products-table');
             const tr = table.getElementsByTagName('tr');
 
-            for (let i = 1; i < tr.length; i++) { // Start from 1 to skip the header row
+            for (let i = 1; i < tr.length; i++) {
                 const td = tr[i].getElementsByTagName('td')[0];
                 if (td) {
                     const txtValue = td.textContent || td.innerText;
@@ -171,68 +185,8 @@
             }
         }
 
-function sortTable(columnIndex) {
-    const table = document.getElementById('products-table');
-    let switching = true;
-    let direction = 'asc';
-    let switchcount = 0;
-    let shouldSwitch;
-    let i; // Declare `i` outside the `while` loop so it can be accessed when swapping rows
-
-    while (switching) {
-        switching = false;
-        const rows = table.rows;
-
-        for (i = 1; i < (rows.length - 1); i++) { // Initialize `i` here
-            shouldSwitch = false;
-            const x = rows[i].getElementsByTagName('td')[columnIndex];
-            const y = rows[i + 1].getElementsByTagName('td')[columnIndex];
-
-            if (direction === 'asc' && x.innerHTML.toLowerCase() > y.innerHTML.toLowerCase()) {
-                shouldSwitch = true;
-                break;
-            } else if (direction === 'desc' && x.innerHTML.toLowerCase() < y.innerHTML.toLowerCase()) {
-                shouldSwitch = true;
-                break;
-            }
-        }
-
-        if (shouldSwitch) {
-            rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
-            switching = true;
-            switchcount++;
-        } else if (switchcount === 0 && direction === 'asc') {
-            direction = 'desc';
-            switching = true;
-        }
-    }
-
-    updateSortArrows(columnIndex, direction);
-}
-
-function updateSortArrows(columnIndex, direction) {
-    const headers = document.querySelectorAll('#products-table th');
-    headers.forEach((header, index) => {
-        const sortArrow = header.querySelector('.sort-arrow');
-        if (sortArrow) { // Check if sortArrow exists
-            if (index === columnIndex) {
-                header.classList.add('active');
-                sortArrow.textContent = direction === 'asc' ? '▲' : '▼';
-            } else {
-                header.classList.remove('active');
-                sortArrow.textContent = '△';
-            }
-        }
-    });
-}
-
-
         function triggerManualSync() {
             alert('Manual sync triggered!');
-        }
-
-        function setSyncMaster(productId) {
-            alert(`Set product ${productId} as sync master`);
         }
 
         function linkProducts(productId) {
@@ -241,5 +195,3 @@ function updateSortArrows(columnIndex, direction) {
     </script>
 </body>
 </html>
-
-
