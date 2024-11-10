@@ -1,7 +1,9 @@
 import axios from 'axios';
+import dotenv from 'dotenv';
+dotenv.config();
 
-const storeName = 'projekt-agency-apps';
-const accessToken = 'shpua_2808d7d586bc6db8b60eff289f6cb771';  // Replace with your actual access token
+const storeName = process.env.TEST_STORE_URL || 'projekt-agency-apps'; // Use the test store from environment or fallback
+const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;  // Store the actual access token in .env file
 const apiVersion = '2023-04';
 
 const validateAccessToken = async () => {

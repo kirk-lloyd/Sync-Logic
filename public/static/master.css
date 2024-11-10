@@ -35,6 +35,11 @@ body {
     color: #1b243b;
 }
 
+#navigation a:focus {
+    outline: 2px solid #cced45;
+    outline-offset: 2px;
+}
+
 /* Content Section */
 .content-section {
     max-width: 1000px;
@@ -155,11 +160,6 @@ body {
     color: #333;
 }
 
-#products-table .sort-arrow {
-    color: #cced45;
-    font-weight: bold;
-}
-
 /* Checkbox Column Styling */
 .checkbox-column {
     text-align: center;
@@ -220,6 +220,3 @@ body {
     background-color: #333a52;
     transform: translateY(-2px);
 }
-
-
-

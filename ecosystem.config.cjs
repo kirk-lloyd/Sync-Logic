@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 module.exports = {
   apps: [
     {
@@ -12,7 +14,7 @@ module.exports = {
       },
       env_production: {
         NODE_ENV: 'production',
-        PORT: 3000,
+        PORT: process.env.PORT || 3000,
         SHOPIFY_API_KEY: process.env.SHOPIFY_API_KEY,
         SHOPIFY_API_SECRET: process.env.SHOPIFY_API_SECRET,
         SHOPIFY_APP_URL: process.env.SHOPIFY_APP_URL,
@@ -21,6 +23,9 @@ module.exports = {
         TEST_STORE_URL: process.env.TEST_STORE_URL,
         SHOPIFY_APP_HANDLE: process.env.SHOPIFY_APP_HANDLE,
       },
+      log_date_format: 'YYYY-MM-DD HH:mm Z',
+      error_file: './logs/pm2-error.log',  // Specify error logs
+      out_file: './logs/pm2-out.log'       // Specify output logs
     },
   ],
 };

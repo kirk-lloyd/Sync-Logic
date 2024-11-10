@@ -2,11 +2,12 @@ document.addEventListener("DOMContentLoaded", function() {
     // Populate the navigation bar in the HTML
     const navigationContainer = document.getElementById('navigation');
     if (navigationContainer) {
+        const shopDomain = new URLSearchParams(location.search).get("shop");
         navigationContainer.innerHTML = `
             <div class="navbar">
-                <a href="/home" data-section="home">Home</a>
-                <a href="/products" data-section="products">Products</a>
-                <a href="/bundles" data-section="bundles">Bundles</a>
+                <a href="/home?shop=${shopDomain}" data-section="home">Home</a>
+                <a href="/products?shop=${shopDomain}" data-section="products">Products</a>
+                <a href="/bundles?shop=${shopDomain}" data-section="bundles">Bundles</a>
             </div>
         `;
     }
@@ -33,6 +34,11 @@ document.addEventListener("DOMContentLoaded", function() {
         const targetSection = document.getElementById(section);
         if (targetSection) {
             targetSection.style.display = 'block';
+            targetSection.style.opacity = 0; // Start with hidden
+            setTimeout(() => {
+                targetSection.style.opacity = 1; // Fade in
+                targetSection.style.transition = 'opacity 0.5s ease-in-out';
+            }, 10);
         }
     }
 

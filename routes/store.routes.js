@@ -3,11 +3,16 @@ import Store from '../models/store.model.js';
 
 const router = express.Router();
 
-// Example endpoint to register a new store
+// Endpoint to register a new store
 router.post('/register', async (req, res) => {
   const { shop_domain, access_token } = req.body;
 
   try {
+    const existingStore = await Store.findOne({ shop_domain });
+    if (existingStore) {
+      return res.status(409).json({ message: 'Store already registered' });
+    }
+
     const newStore = new Store({
       shop_domain,
       access_token,
