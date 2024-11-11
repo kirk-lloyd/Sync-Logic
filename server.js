@@ -25,6 +25,7 @@ const __dirname = path.dirname(__filename);
 
 console.log('Starting server initialization...');
 
+<<<<<<< HEAD
 // Initialize the database connection
 initializeDatabase()
   .then(() => {
@@ -33,6 +34,17 @@ initializeDatabase()
   .catch((error) => {
     console.error('Error during database initialization:', error);
   });
+=======
+// Initialize PostgreSQL pool
+const pool = new Pool({
+    user: process.env.DB_USER,
+    host: process.env.DB_HOST,
+    database: process.env.DB_NAME,
+    password: process.env.DB_PASSWORD,
+    port: process.env.DB_PORT,
+});
+console.log('PostgreSQL connection pool created successfully.');
+>>>>>>> 90b9265 (Updated database integration to PostgreSQL. Added missing stores table setup, error handling, and refactored middleware for new DB structure.)
 
 const app = express();
 const port = process.env.PORT || 3000;
