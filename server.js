@@ -1,50 +1,41 @@
 import dotenv from 'dotenv';
-dotenv.config();
 import express from 'express';
-import bodyParser from 'body-parser';
 import crypto from 'crypto';
 import path from 'path';
 import axios from 'axios';
 import cookieParser from 'cookie-parser';
 import session from 'express-session';
 import { fileURLToPath } from 'url';
-
-// Import models
+import pkg from 'pg';
 import Store from './models/store.model.js';
-
-// Import routes
 import productRoutes from './routes/product.routes.js';
 import storeRoutes from './routes/store.routes.js';
 
-// Import the initializeDatabase function from connect.js
-import { initializeDatabase } from './db/connect.js';
+dotenv.config();
+
+const { Pool } = pkg;
+
+// Database connection setup
+const pool = new Pool({
+  user: process.env.DB_USER,
+  host: process.env.DB_HOST,
+  database: process.env.DB_NAME,
+  password: process.env.DB_PASSWORD,
+  port: process.env.DB_PORT,
+});
+
+pool.connect()
+  .then(() => console.log('Connected to PostgreSQL database successfully.'))
+  .catch((error) => {
+    console.error('Failed to connect to PostgreSQL database:', error);
+    process.exit(1); // Exit if unable to connect to DB
+  });
 
 // Create __dirname equivalent for ES Modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 console.log('Starting server initialization...');
-
-<<<<<<< HEAD
-// Initialize the database connection
-initializeDatabase()
-  .then(() => {
-    console.log('Database initialization complete.');
-  })
-  .catch((error) => {
-    console.error('Error during database initialization:', error);
-  });
-=======
-// Initialize PostgreSQL pool
-const pool = new Pool({
-    user: process.env.DB_USER,
-    host: process.env.DB_HOST,
-    database: process.env.DB_NAME,
-    password: process.env.DB_PASSWORD,
-    port: process.env.DB_PORT,
-});
-console.log('PostgreSQL connection pool created successfully.');
->>>>>>> 90b9265 (Updated database integration to PostgreSQL. Added missing stores table setup, error handling, and refactored middleware for new DB structure.)
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -58,7 +49,7 @@ console.log('Setting up middleware...');
 
 // Body Parser to parse JSON requests
 app.use(
-  bodyParser.json({
+  express.json({
     verify: (req, res, buf) => {
       req.rawBody = buf;
     },
@@ -132,7 +123,9 @@ async function addStoreCredentials(req, res, next) {
   }
 
   try {
-    const store = await Store.findOne({ shop_domain: shop });
+    const result = await pool.query('SELECT * FROM stores WHERE shop_domain = $1', [shop]);
+    const store = result.rows[0];
+
     if (!store) {
       console.error(`Store not found for domain: ${shop}`);
       return res.status(404).send('Store not found.');
@@ -152,8 +145,7 @@ function verifyWebhook(req, res, next) {
   console.log('Verifying webhook...');
   try {
     const hmacHeader = req.headers['x-shopify-hmac-sha256'];
-    const secret = SHOPIFY_API_SECRET;
-    const hash = crypto.createHmac('sha256', secret).update(req.rawBody).digest('base64');
+    const hash = crypto.createHmac('sha256', process.env.SHOPIFY_API_SECRET).update(req.rawBody).digest('base64');
 
     const isVerified = crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(hmacHeader));
     if (isVerified) {
@@ -174,7 +166,7 @@ app.post('/webhooks/app/uninstalled', verifyWebhook, async (req, res) => {
   console.log('Processing app/uninstalled webhook...');
   const shopDomain = req.headers['x-shopify-shop-domain'];
   try {
-    await Store.findOneAndDelete({ shop_domain: shopDomain });
+    await pool.query('DELETE FROM stores WHERE shop_domain = $1', [shopDomain]);
     console.log(`Data for ${shopDomain} removed upon app uninstall.`);
     res.status(200).send('App uninstalled');
   } catch (error) {
@@ -228,17 +220,19 @@ app.get('/auth/callback', async (req, res) => {
 
       console.log('Access token received:', accessToken);
 
-      // Save or update shop and access token in the unique store database
+      // Save or update shop and access token in the database
       const storeData = { shop_domain: shop, access_token: accessToken };
-      const updatedStore = await Store.findOneAndUpdate({ shop_domain: shop }, storeData, {
-        upsert: true,
-        new: true,
-      });
+      const updatedStore = await pool.query(
+        `INSERT INTO stores (shop_domain, access_token)
+         VALUES ($1, $2)
+         ON CONFLICT (shop_domain) DO UPDATE SET access_token = $2 RETURNING *`,
+        [shop, accessToken]
+      );
 
-      if (updatedStore) {
-        console.log(`Successfully stored access token in MongoDB for ${shop}`);
+      if (updatedStore.rows[0]) {
+        console.log(`Successfully stored access token in PostgreSQL for ${shop}`);
       } else {
-        console.error(`Failed to save access token for ${shop} in MongoDB`);
+        console.error(`Failed to save access token for ${shop} in PostgreSQL`);
       }
 
       // Redirect back to the app within the Shopify admin
