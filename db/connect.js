@@ -1,78 +1,44 @@
-import mongoose from 'mongoose';
-import fs from 'fs';
-import path from 'path';
+import pkg from 'pg';
+const { Pool } = pkg;
+import dotenv from 'dotenv';
 
-// MongoDB connection URI
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://syncUser:StockAdmin2024!$@stock-sync-logic-db.cluster-c1qwo2o0yayj.ap-southeast-2.docdb.amazonaws.com:27017/?tls=true&tlsCAFile=global-bundle.pem&replicaSet=rs0&readPreference=secondaryPreferred&retryWrites=false';
+dotenv.config();
 
-// Path to the CA bundle
-const CA_BUNDLE_PATH = path.resolve('./certs/rds-combined-ca-bundle.pem');
+const pool = new Pool({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  port: process.env.DB_PORT,
+  ssl: false, // Disabling SSL since the server does not support SSL connections
+});
 
-export const initializeDatabase = async () => {
-  console.log('Starting DocumentDB initialization...');
-  try {
-    console.log(`Checking CA bundle at path: ${CA_BUNDLE_PATH}`);
-    if (fs.existsSync(CA_BUNDLE_PATH)) {
-      console.log('CA bundle found.');
-    } else {
-      console.error('CA bundle not found at specified path.');
-      process.exit(1);
-    }
-
-    console.log('Attempting to connect to Amazon DocumentDB...');
-    await mongoose.connect(MONGODB_URI, {
-      tls: true,
-      tlsCAFile: CA_BUNDLE_PATH,
-      tlsAllowInvalidCertificates: true,
-      serverSelectionTimeoutMS: 5000,
-    });
-    console.log('Connected successfully to Amazon DocumentDB.');
-  } catch (error) {
-    console.error('Failed to initialize database:', error.message);
+// Test the connection
+pool.connect((err, client, release) => {
+  if (err) {
+    console.error('Error acquiring client', err.stack);
+  } else {
+    console.log('PostgreSQL database connected successfully.');
+    release();
   }
-};
+});
 
-// Function to create a unique store connection based on the shop ID
-export const createStoreConnection = async (shopId) => {
+// Function to initialize the database (if required)
+export async function initializeDatabase() {
   try {
-    console.log(`Creating unique connection for shopId: ${shopId}`);
-
-    // Construct a unique database name using the shop ID
-    const dbName = `sync_logic_${shopId}`;
-    const connectionString = `${MONGODB_URI}&dbName=${dbName}`;
-
-    // Create or connect to the unique database
-    const connection = await mongoose.createConnection(connectionString, {
-      tls: true,
-      tlsCAFile: CA_BUNDLE_PATH,
-      tlsAllowInvalidCertificates: true,
-      serverSelectionTimeoutMS: 5000,
-    });
-
-    // Listen for connection events
-    connection.on('connected', () => {
-      console.log(`Connected successfully to the existing database for shopId: ${shopId}`);
-    });
-
-    // This block is an addition to add more confirmation logs
-    connection.on('open', () => {
-      console.log(`Database for shopId ${shopId} is now open.`);
-    });
-
-    // Connection confirmation
-    connection.once('open', async () => {
-      // Check if the database has collections indicating existing data
-      const collections = await connection.db.listCollections().toArray();
-      if (collections.length > 0) {
-        console.log(`Database for shopId ${shopId} already exists with ${collections.length} collections.`);
-      } else {
-        console.log(`New database created for shopId ${shopId}. No collections found.`);
-      }
-    });
-
-    return connection;
+    await pool.query(
+      `CREATE TABLE IF NOT EXISTS stores (
+        shop_id VARCHAR(255) PRIMARY KEY,
+        shop_domain VARCHAR(255) UNIQUE NOT NULL,
+        access_token VARCHAR(255) NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      )`
+    );
+    console.log('Database initialized and tables created if they did not exist.');
   } catch (error) {
-    console.error(`Error creating unique connection for shopId ${shopId}:`, error);
+    console.error('Error initializing database:', error);
     throw error;
   }
-};
+}
+
+export { pool };

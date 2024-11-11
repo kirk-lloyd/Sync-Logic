@@ -1,8 +1,5 @@
-import { createStoreConnection } from '../db/connect.js';
+import { pool } from '../db/connect.js';
 import crypto from 'crypto';
-
-// Cache for store connections to avoid redundant connections
-const storeConnections = {};
 
 // Middleware to verify Shopify webhook authenticity
 export const verifyWebhook = (req, res, next) => {
@@ -33,41 +30,23 @@ export const useStoreDatabase = async (req, res, next) => {
     return res.status(400).send('Shop domain or shop ID missing in request headers');
   }
 
-  // Attempt to reuse an existing connection if available
-  if (storeConnections[shopId]) {
-    req.dbConnection = storeConnections[shopId];
-    console.log(`Reusing existing connection for shop: ${shopDomain}`);
-    return next();
-  }
-
   try {
-    console.log(`Creating new connection for shop: ${shopDomain}`);
-    const connection = await createStoreConnection(shopId);
+    console.log(`Querying store data for shop: ${shopDomain}`);
 
-    if (!connection) {
-      throw new Error(`Failed to create or retrieve connection for shop: ${shopDomain}`);
-    }
+    // Use the pool to query the database
+    const queryText = 'SELECT * FROM stores WHERE shop_id = $1';
+    const result = await pool.query(queryText, [shopId]);
 
-    storeConnections[shopId] = connection;
-    req.dbConnection = connection;
-
-    // Find and attach store information to the request
-    const StoreModel = req.dbConnection.model('Store', new mongoose.Schema({
-      shop_domain: String,
-      access_token: String,
-    }));
-
-    const store = await StoreModel.findOne({ shop_domain: shopDomain });
-
-    if (!store) {
-      console.error(`Store not found for domain: ${shopDomain}`);
+    if (result.rows.length === 0) {
+      console.error(`Store not found for shop ID: ${shopId}`);
       return res.status(404).send('Store not found');
     }
 
-    req.store = store;
+    // Attach store information to the request
+    req.store = result.rows[0];
     next();
   } catch (error) {
-    console.error(`Error connecting to unique database for ${shopDomain}:`, error);
+    console.error(`Error retrieving store data for ${shopDomain}:`, error);
     res.status(500).send('Internal Server Error');
   }
 };
