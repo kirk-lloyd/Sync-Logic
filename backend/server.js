@@ -29,7 +29,7 @@ initializeDatabase()
   });
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 5000;
 
 // Shopify credentials from environment variables
 const SHOPIFY_API_KEY = process.env.SHOPIFY_API_KEY;

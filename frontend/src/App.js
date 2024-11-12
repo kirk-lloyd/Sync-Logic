@@ -1,21 +1,21 @@
 import React from 'react';
-import { BrowserRouter as Router, Route, Switch } from 'react-router-dom';
-import Navigation from '../static/Navigation';
-import Home from '../static/Home';
-import Products from '../static/Products';
+import { AppProvider, Page, Card } from '@shopify/polaris';
+import Navigation from './components/Navigation';
+import AppBridgeProvider from './providers/AppBridgeProvider';
 
 function App() {
-  const shopOrigin = new URLSearchParams(window.location.search).get("shop");
-
   return (
-    <Router>
-      <Navigation shopOrigin={shopOrigin} />
-      <Switch>
-        <Route exact path="/" component={Home} />
-        <Route path="/products" render={() => <Products shopDomain={shopOrigin} />} />
-        {/* Add more routes as needed */}
-      </Switch>
-    </Router>
+    <AppBridgeProvider>
+      <AppProvider>
+        <Navigation />
+        <Page title="Stock Sync Logic">
+          {/* Rest of your app components go here */}
+          <Card sectioned>
+            <p>Welcome to Stock Sync Logic!</p>
+          </Card>
+        </Page>
+      </AppProvider>
+    </AppBridgeProvider>
   );
 }
 
