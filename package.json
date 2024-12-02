@@ -8,6 +8,7 @@
     "start-frontend": "cd frontend && npm start"
   },
   "dependencies": {
+    "nodemailer": "^6.9.16",
     "web-vitals": "^4.2.4"
   }
 }

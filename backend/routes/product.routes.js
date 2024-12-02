@@ -2,6 +2,10 @@
 import express from 'express';
 import { pool } from '../db/connect.js'; // Use pool from connect.js
 import { useStoreDatabase } from '../middlewares/shopify.middleware.js';
+import axios from 'axios';
+import dotenv from 'dotenv';
+
+dotenv.config({ path: '.env' });
 
 const router = express.Router();
 
@@ -73,6 +77,145 @@ router.post('/graphql', async (req, res) => {
         console.error('Error fetching products from Shopify GraphQL:', error.message);
         res.status(500).send('Internal Server Error');
     }
+});
+
+// Endpoint to set a product as the sync master
+router.post('/products/:productId/sync-master', async (req, res) => {
+  const { productId } = req.params;
+  const shopDomain = req.headers['x-shop-domain'] || req.query.shop;
+
+  if (!productId || !shopDomain) {
+    console.error('Product ID and shop domain are required.');
+    return res.status(400).send('Product ID and shop domain are required.');
+  }
+
+  try {
+    const result = await pool.query('SELECT access_token FROM stores WHERE shop_domain = $1', [shopDomain]);
+
+    if (result.rows.length === 0 || !result.rows[0].access_token) {
+      console.error('No access token found for shop:', shopDomain);
+      return res.status(401).send('Unauthorized: Access token missing');
+    }
+
+    const accessToken = result.rows[0].access_token;
+
+    // Retrieve the product's metafields to check if it is already a child
+    const metafieldsEndpoint = `https://${shopDomain}/admin/api/2023-04/products/${productId}/metafields.json`;
+    const metafieldsResponse = await axios.get(metafieldsEndpoint, {
+      headers: {
+        'X-Shopify-Access-Token': accessToken,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const linkedProductsMetafield = metafieldsResponse.data.metafields.find(
+      (metafield) => metafield.key === 'linked_products' && metafield.namespace === `sync_logic_${shopDomain}`
+    );
+
+    if (linkedProductsMetafield) {
+      console.error(`Product ${productId} is a child product and cannot be set as a sync master.`);
+      return res.status(400).send('A child product cannot be set as a sync master.');
+    }
+
+    // Update the product's metafield to set it as a Sync Master
+    const metafieldPayload = {
+      metafield: {
+        namespace: `sync_logic_${shopDomain}`, // Use a unique namespace
+        key: 'is_sync_master',
+        value: 'true',
+        type: 'boolean',
+      },
+    };
+
+    const response = await axios.post(metafieldsEndpoint, metafieldPayload, {
+      headers: {
+        'X-Shopify-Access-Token': accessToken,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (response.status === 201) {
+      console.log(`Product ${productId} is now set as sync master for shop: ${shopDomain}`);
+      res.status(200).send(`Product ${productId} is now the sync master.`);
+    } else {
+      console.error('Failed to set product as sync master');
+      res.status(response.status).send('Failed to set product as sync master');
+    }
+  } catch (error) {
+    console.error('Error setting product as sync master:', error.message);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+// Endpoint to synchronize inventory across linked products
+router.post('/products/:productId/sync-inventory', async (req, res) => {
+  const { productId } = req.params;
+  const shopDomain = req.headers['x-shop-domain'] || req.query.shop;
+  const { inventoryQuantity } = req.body;
+
+  if (!productId || !shopDomain || inventoryQuantity === undefined) {
+    console.error('Product ID, shop domain, and inventory quantity are required.');
+    return res.status(400).send('Product ID, shop domain, and inventory quantity are required.');
+  }
+
+  try {
+    const result = await pool.query('SELECT access_token FROM stores WHERE shop_domain = $1', [shopDomain]);
+
+    if (result.rows.length === 0 || !result.rows[0].access_token) {
+      console.error('No access token found for shop:', shopDomain);
+      return res.status(401).send('Unauthorized: Access token missing');
+    }
+
+    const accessToken = result.rows[0].access_token;
+
+    // Retrieve linked products from the master product's metafield
+    const metafieldsEndpoint = `https://${shopDomain}/admin/api/2023-04/products/${productId}/metafields.json`;
+    const metafieldsResponse = await axios.get(metafieldsEndpoint, {
+      headers: {
+        'X-Shopify-Access-Token': accessToken,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const linkedProductsMetafield = metafieldsResponse.data.metafields.find(
+      (metafield) => metafield.key === 'linked_products' && metafield.namespace === `sync_logic_${shopDomain}`
+    );
+
+    if (!linkedProductsMetafield) {
+      console.error('No linked products metafield found for product:', productId);
+      return res.status(404).send('No linked products metafield found');
+    }
+
+    const linkedProductIds = linkedProductsMetafield.value;
+
+    // Update inventory for all linked products
+    for (const linkedProductId of linkedProductIds) {
+      const updateEndpoint = `https://${shopDomain}/admin/api/2023-04/products/${linkedProductId}.json`;
+      const updatePayload = {
+        product: {
+          id: linkedProductId,
+          variants: [
+            {
+              inventory_quantity: inventoryQuantity,
+            },
+          ],
+        },
+      };
+
+      await axios.put(updateEndpoint, updatePayload, {
+        headers: {
+          'X-Shopify-Access-Token': accessToken,
+          'Content-Type': 'application/json',
+        },
+      });
+      console.log(`Inventory synchronized for product ${linkedProductId} in shop ${shopDomain}`);
+    }
+
+    res.status(200).send('Inventory synchronized across linked products.');
+  } catch (error) {
+    console.error('Error synchronizing inventory:', error.message);
+    res.status(500).send('Internal Server Error');
+  }
 });
 
 export default router;
